@@ -1,6 +1,11 @@
 # Here begins the actual creation of destination files
-libraries: $(BIN_DIR)/cprintf.rel $(BIN_DIR)/cpm0.rel $(BIN_DIR)/cpmbdos.rel $(BIN_DIR)/ansi_term.rel $(BIN_DIR)/cpm_sysfunc.rel \
-			$(BIN_DIR)/hw_common.rel $(BIN_DIR)/hw_modprn02.rel
+libraries: $(BIN_DIR)/cprintf.rel $(BIN_DIR)/cpm0.rel \
+	   $(BIN_DIR)/cpmbdos.rel \
+	   $(BIN_DIR)/ansi_term.rel \
+	   $(BIN_DIR)/pcw_term.rel \
+	   $(BIN_DIR)/shared_term.rel \
+	   $(BIN_DIR)/cpm_sysfunc.rel \
+	   $(BIN_DIR)/hw_common.rel $(BIN_DIR)/hw_modprn02.rel
 
 libraries-clean:
 	rm -f $(BIN_DIR)/*.rel
@@ -13,6 +18,12 @@ $(BIN_DIR)/cpm_sysfunc.rel: $(SYSLIB_SRC_DIR)/cpm_sysfunc.c
 
 $(BIN_DIR)/ansi_term.rel: $(SYSLIB_SRC_DIR)/ansi_term.c
 	$(CCC) $(CCC_FLAGS) -o $(BIN_DIR) $(SYSLIB_SRC_DIR)/ansi_term.c
+
+$(BIN_DIR)/shared_term.rel: $(SYSLIB_SRC_DIR)/shared_term.c
+	$(CCC) $(CCC_FLAGS) -o $(BIN_DIR) $(SYSLIB_SRC_DIR)/shared_term.c
+
+$(BIN_DIR)/pcw_term.rel: $(SYSLIB_SRC_DIR)/pcw_term.c
+	$(CCC) $(CCC_FLAGS) -o $(BIN_DIR) $(SYSLIB_SRC_DIR)/pcw_term.c
 
 $(BIN_DIR)/cpmbdos.rel:	$(SRC_DIR)/cpm/cpmbdos.c
 	$(CCC) $(CCC_FLAGS) -o $(BIN_DIR) $(SRC_DIR)/cpm/cpmbdos.c

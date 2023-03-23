@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "cpm_sysfunc.h"
+#include "shared_term.h"
 
 
 #define ESC_CHR 0x1B
@@ -182,15 +183,3 @@ void term_ANSIIndex(void) {
 void term_ANSIReverseIndex(void) {
 	term_sendCommand(ANSI_REVIDX);	
 }
-
-void term_sendCommand(char *cmd) {
-	int idx = 0;
-
-	cpm_putchar(ESC_CHR);
-	while (cmd[idx] != '\0') {
-		cpm_putchar(cmd[idx]);
-		idx++;
-	}
-}
-
-
