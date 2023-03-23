@@ -51,6 +51,8 @@ char *cpm_gets(char *p);
 char cpm_getchar(void);
 void cpm_putchar(char c);
 
+char cpm_rawio_read_wait(void);
+
 uint8_t cpm_performFileOp(FileOperation fop, FCB *cb);
 
 uint8_t cpm_deleteFile(FCB *cb);

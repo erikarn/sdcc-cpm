@@ -46,6 +46,11 @@ void cpm_putchar(char c) {
 	cpmbdos_extn(&cwrite, &ret_ba, &ret_hl);
 }
 
+char cpm_rawio_read_wait(void) {
+	BDOSCALL cread = { C_RAWIO, { (uint16_t) C_RAWIO_PARAM_READ_WAIT } };
+	return cpmbdos_extn(&cread, &ret_ba, &ret_hl);
+}
+
 void cpm_setDMAAddr(uint16_t addr) {
 	BDOSCALL fdma = { F_DMAOFF, {addr} };
 

@@ -60,6 +60,12 @@ typedef struct {
 	uint16_t  parm16;
 } BDOSCALL;
 
+/*
+ * BDOS parameters for C_RAWIO
+ */
+#define C_RAWIO_PARAM_READ_NOWAIT 0x00ff
+#define C_RAWIO_PARAM_STATUS 0x00fe
+#define C_RAWIO_PARAM_READ_WAIT 0x00fd
 
 /* 
  *  From http://www.tassos-oak.com/NB2/toolbook.html
