@@ -1,6 +1,6 @@
 # Prefixes
-#COMPILER_PREFIX = /opt/local/
-COMPILER_PREFIX = $(SDCC_PREFIX)
+COMPILER_PREFIX = /usr/local/
+# COMPILER_PREFIX = $(SDCC_PREFIX)
 COMPILER_LIBS = $(COMPILER_PREFIX)/share/sdcc/lib/z80/
 
 # Options
@@ -12,7 +12,7 @@ CAS = $(COMPILER_PREFIX)/bin/sdasz80
 CLD = $(COMPILER_PREFIX)/bin/sdldz80
 
 # Local CC
-CC = gcc
+CC = cc
 
 # Misc local commands
 ECHO = echo
