@@ -23,6 +23,15 @@ typedef enum {
 #define	KEY_CR				13
 #define	KEY_DEL				127
 #define	KEY_BS				8
+#define	KEY_FF				12
+
+/*
+ * XXX TODO: not used yet
+ */
+#define	EDITOR_MAX_LINE_LEN		80
+#define	EDITOR_MAX_LINE_COUNT		50
+
+struct text_line;
 
 static struct cur_editor_state {
 	/* Current cursor x/y position */
@@ -44,6 +53,8 @@ static struct cur_editor_state {
 	uint8_t editor_mode;
 	uint8_t editor_line_ending;
 	bool do_exit;
+
+	struct text_line *cur_line;
 } cur_state;
 
 #define	TMP_BUF_LEN		16
@@ -67,6 +78,12 @@ editor_init(void)
 	cur_state.editor_mode = EDITOR_MODE_CMD;
 	cur_state.editor_line_ending = EDITOR_LINE_ENDING_CRLF;
 	cur_state.do_exit = false;
+}
+
+static inline uint16_t
+get_cur_line_number(void)
+{
+	return (cur_state.top_screen_line + cur_state.cur_y);
 }
 
 /* ***************************************************************** */
@@ -94,7 +111,7 @@ text_line_alloc(uint8_t size)
 {
 	struct text_line *l;
 
-	l = calloc(1, sizeof(struct text_line) + (sizeof(char) * size));
+	l = calloc(1, sizeof(struct text_line));
 	if (l == NULL) {
 		return NULL;
 	}
@@ -113,6 +130,20 @@ text_line_free(struct text_line *l)
 {
 	free(l->buf);
 	free(l);
+}
+
+bool
+text_line_realloc(struct text_line *l, uint8_t size)
+{
+	char *b;
+	b = realloc(l->buf, size);
+	if (b == NULL) {
+		return false;
+	}
+	l->buf = b;
+	l->size = size;
+
+	return true;
 }
 
 struct text_line_array_entry;
@@ -312,6 +343,42 @@ void sys_init(void) {
 	TERM_pcw_init();
 }
 
+/*
+ * Handle the 'insert' / 'append' commands.
+ */
+static void
+handle_insert_cmd(void)
+{
+	struct text_line *l;
+	uint16_t ln;
+
+	/*
+	 * Is there a line at the current line number?
+	 * If not, we should try to create one first.
+	 */
+	ln = get_cur_line_number();
+	l = text_line_fetch(ln, 2);		// Short for now, can expand it later
+	if (l == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/* Update our line cache */
+	cur_state.cur_line = l;
+
+	/*
+	 * For now let's redraw the line, in case it's a '~' that
+	 * we need to update.  Like, that's pretty over the top
+	 * inefficiency wise, but I wanna working editor before I
+	 * want a super efficiently fast editor.
+	 */
+	repaint_line(cur_state.cur_y);
+
+	/* And now we're in "edit" mode */
+	/* XXX make it an inline func for debugging */
+	cur_state.editor_mode = EDITOR_MODE_EDIT;
+}
+
 static void
 handle_colon_cmd(void)
 {
@@ -368,13 +435,100 @@ exit:
 }
 
 static void
+handle_keypress_cursor_up(void)
+{
+	struct text_line *l;
+	uint16_t ln;
+
+	/* See if we can even go up */
+	ln = get_cur_line_number();
+	if (ln == 0) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/*
+	 * See if a line exists before we try
+	 * updating the screen.
+	 */
+	l = text_line_lookup(ln - 1);
+	if (l == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/*
+	 * Ok, a line exists.  Move the cursor up one,
+	 * scroll the screen if possible, update the
+	 * current text line.
+	 */
+	/* XXX TODO */
+}
+
+static void
+handle_keypress_cursor_down(void)
+{
+	struct text_line *l;
+	uint16_t ln;
+
+	/*
+	 * See if a line exists before we try
+	 * updating the screen.
+	 */
+	ln = get_cur_line_number();
+	l = text_line_lookup(ln + 1);
+	if (l == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/*
+	 * Ok, a line exists.  Move the cursor down one,
+	 * scroll the screen if possible, update the
+	 * current text line.
+	 */
+	/* XXX TODO */
+}
+
+static void
+handle_keypress_cursor_left(void)
+{
+	if (cur_state.cur_line == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+}
+
+static void
+handle_keypress_cursor_right(void)
+{
+	if (cur_state.cur_line == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+}
+
+static void
 handle_keypress_cmd(char c)
 {
 	switch (c) {
+	case 'r':		/* should be ctrl-L instead XXX TODO */
+		repaint_screen();
+		break;
 	case 'h':
+		handle_keypress_cursor_left();
+		break;
+	case 'i':
+		handle_insert_cmd();
+		break;
 	case 'j':
+		handle_keypress_cursor_down();
+		break;
 	case 'k':
+		handle_keypress_cursor_up();
+		break;
 	case 'l':
+		handle_keypress_cursor_right();
 		break;
 	case ':':
 		handle_colon_cmd();
@@ -382,6 +536,142 @@ handle_keypress_cmd(char c)
 	default:
 		TERM_pcw_beep();
 		break;
+	}
+}
+
+static void
+handle_keypress_edit_newline(char c)
+{
+	struct text_line *l;
+	uint16_t cur_editor_line;
+
+	(void) c;
+
+	/* New line - start by going to the beginning of line */
+	cur_state.cur_x = 0;
+	cur_state.left_screen_col = 0;
+
+	/* Are we at the end of our size? */
+	/*
+	 * XXX TODO: again, I should likely store this and calculate
+	 * the cursor position..
+	 */
+	cur_editor_line = cur_state.cur_x + cur_state.top_screen_line;
+	if (cur_editor_line >= EDITOR_MAX_LINE_COUNT) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/*
+	 * Now we need to check if we have a next line, and
+	 * if not we create one.  (Well a short one for now.)
+	 */
+	l = text_line_fetch(cur_editor_line + 1, 2);
+	if (l == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/*
+	 * Now, check to see if we need to scroll the screen down
+	 * because we're at the bottom of the screen.
+	 */
+	cur_state.cur_y++;
+	if (cur_state.cur_y > cur_state.port_h) {
+		cur_state.cur_y--;
+		cur_state.top_screen_line++;
+		/* XXX repaint for now, will scroll later */
+		repaint_screen();
+	}
+
+	/* Update cached line */
+	cur_state.cur_line = l;
+
+	/* Update cursor, display new now blanked line */
+	repaint_line(cur_state.cur_y);
+	TERM_pcw_move_cursor(0, cur_state.cur_y);
+}
+
+static void
+handle_keypress_edit(char c)
+{
+	uint8_t cur_x_pos;
+
+	if (c == KEY_ESC) {
+		/* Drop out of editor mode */
+		cur_state.editor_mode = EDITOR_MODE_CMD;
+		return;
+	}
+
+	/* Definitely need a cached line already here! */
+	if (cur_state.cur_line == NULL) {
+		TERM_pcw_beep();
+		return;
+	}
+
+	/*
+	 * Depending upon our mode (insert, overwrite)
+	 * we will need to potentially do some inserting
+	 * and copying and such.
+	 *
+	 * But for now, to bring the editor up, let's just
+	 * support typing keyboard characters and handle DEL,
+	 * ignore CR/LF (so we don't change lines), and
+	 * just debug the "grow the line buffer if we have
+	 * to" logic.
+	 */
+	/* XXX for now, will handle DEL/BS and other stuff later */
+	if (c < 32 || c > 126) {
+		return;
+	}
+
+	/*
+	 * See if we have enough space to add it to the line.
+	 * If we don't then we're going to need to reallocate the
+	 * line or check if we've hit the maximum line length.
+	 */
+
+	/*
+	 * XXX I definitely don't like this; it could wrap in really
+	 * terrible ways if I'm not careful!
+	 *
+	 * XXX I likely should change it to have cur_x be the
+	 * actual line offset, and I subtract left_screen_col to
+	 * get the /actual/ cursor start position.
+	 */
+	cur_x_pos = cur_state.cur_x + cur_state.left_screen_col;
+	if (cur_x_pos >= EDITOR_MAX_LINE_LEN) {
+		TERM_pcw_beep();
+		return;
+	}
+	if (cur_x_pos > cur_state.cur_line->size) {
+		/*
+		 * For now just go for a full line length; optimise smaller
+		 * increments later.
+		 */
+		if (text_line_realloc(cur_state.cur_line, EDITOR_MAX_LINE_LEN) == false) {
+			TERM_pcw_beep();
+			return;
+		}
+	}
+
+	/* It's big enough now, we can edit appropriately */
+	cur_state.cur_line->buf[cur_x_pos] = c;
+	/* Extend the line too if we need to */
+	if (cur_x_pos > cur_state.cur_line->len) {
+		cur_state.cur_line->len = cur_x_pos;
+	}
+	TERM_pcw_write_char(c);
+
+	/* Advance character */
+	cur_state.cur_x++;
+
+	/* If we're at the end of the viewport then we may need to shift
+	 * the viewport and repaint! */
+	if (cur_state.cur_x >= cur_state.port_w) {
+		cur_state.cur_x -= 4;
+		cur_state.left_screen_col += 4;
+		repaint_screen();
 	}
 }
 
@@ -404,6 +694,12 @@ int main() {
 			handle_keypress_cmd(ch);
 			break;
 		case EDITOR_MODE_EDIT:
+			if (ch == KEY_CR) {
+				handle_keypress_edit_newline(ch);
+				break;
+			}
+			handle_keypress_edit(ch);
+			break;
 		default:
 			TERM_pcw_beep();
 			break;
