@@ -3,10 +3,17 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "cpmbdos.h"
-#include "cprintf.h"
+#ifdef	CPM
 #include "syslib/cpm_sysfunc.h"
 #include "syslib/pcw_term.h"
+#include "cpm_defs.h"
+#include "cpmbdos.h"
+#else
+#include <sys/types.h>
+#include "unix_sysfunc.h"
+#include "pcw_term.h"
+#endif
+
 
 typedef enum {
 	EDITOR_MODE_CMD = 0,
@@ -288,6 +295,7 @@ repaint_line(uint8_t y)
 	uint8_t sx, lx;
 
 	TERM_pcw_move_cursor(0, y);
+
 	l = text_line_lookup(cur_state.top_screen_line + y);
 	if (l == NULL) {
 		TERM_pcw_write_char('~');
@@ -296,7 +304,7 @@ repaint_line(uint8_t y)
 
 	/* Iterate over the line itself, print characters */
 	sx = cur_state.left_screen_col;
-	for (lx = 0; lx < cur_state.cur_x; lx++, sx++) {
+	for (lx = 0; lx < cur_state.port_w; lx++, sx++) {
 		if (sx >= l->len) {
 			break;
 		}
@@ -339,7 +347,7 @@ repaint_screen(void)
 /* ***************************************************************** */
 
 void sys_init(void) {
-	cpm_sysfunc_init();
+	platform_sys_init();
 	TERM_pcw_init();
 }
 
@@ -394,17 +402,18 @@ handle_colon_cmd(void)
 	 * XXX TODO: this is basically a single line editor cmd input loop
 	 */
 	while (1) {
-		ch = cpm_rawio_read_wait();
+		ch = platform_console_read_char();
 		if (ch == KEY_ESC) {
 			goto exit;
 		}
-		if (ch == KEY_CR) {
+		/* PCW: enter = KEY_CR; unix , enter = KEY_LF */
+		if (ch == KEY_CR | ch == KEY_LF) {
 			goto done;
 		}
 		if (ch == KEY_DEL) {
 			if (p > 0) {
 				/* XXX */
-				cpm_putchar(KEY_BS);
+				platform_console_write_char(KEY_BS);
 				p--;
 			} else {
 				TERM_pcw_beep();
@@ -414,7 +423,7 @@ handle_colon_cmd(void)
 			if (p < TMP_BUF_LEN) {
 				tmp_buf[p++] = ch;
 				/* XXX */
-				cpm_putchar(ch);
+				platform_console_write_char(ch);
 			} else {
 				TERM_pcw_beep();
 			}
@@ -556,7 +565,7 @@ handle_keypress_edit_newline(char c)
 	 * XXX TODO: again, I should likely store this and calculate
 	 * the cursor position..
 	 */
-	cur_editor_line = cur_state.cur_x + cur_state.top_screen_line;
+	cur_editor_line = cur_state.cur_y + cur_state.top_screen_line;
 	if (cur_editor_line >= EDITOR_MAX_LINE_COUNT) {
 		TERM_pcw_beep();
 		return;
@@ -644,7 +653,7 @@ handle_keypress_edit(char c)
 		TERM_pcw_beep();
 		return;
 	}
-	if (cur_x_pos > cur_state.cur_line->size) {
+	if (cur_x_pos >= cur_state.cur_line->size) {
 		/*
 		 * For now just go for a full line length; optimise smaller
 		 * increments later.
@@ -657,13 +666,17 @@ handle_keypress_edit(char c)
 
 	/* It's big enough now, we can edit appropriately */
 	cur_state.cur_line->buf[cur_x_pos] = c;
+	TERM_pcw_write_char(c);
+
+	/* Advance character */
+	cur_x_pos++;
+
 	/* Extend the line too if we need to */
 	if (cur_x_pos > cur_state.cur_line->len) {
 		cur_state.cur_line->len = cur_x_pos;
 	}
-	TERM_pcw_write_char(c);
 
-	/* Advance character */
+	/* Advance cursor */
 	cur_state.cur_x++;
 
 	/* If we're at the end of the viewport then we may need to shift
@@ -687,14 +700,14 @@ int main() {
 	repaint_screen();
 
 	while (cur_state.do_exit == false) {
-		ch = cpm_rawio_read_wait();
+		ch = platform_console_read_char();
 
 		switch (cur_state.editor_mode) {
 		case EDITOR_MODE_CMD:
 			handle_keypress_cmd(ch);
 			break;
 		case EDITOR_MODE_EDIT:
-			if (ch == KEY_CR) {
+			if (ch == KEY_CR | ch == KEY_LF) {
 				handle_keypress_edit_newline(ch);
 				break;
 			}
