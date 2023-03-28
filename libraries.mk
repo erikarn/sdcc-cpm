@@ -1,5 +1,5 @@
 # Here begins the actual creation of destination files
-libraries: $(BIN_DIR)/cprintf.rel $(BIN_DIR)/cpm0.rel \
+libraries: $(BIN_DIR)/cprintf.rel $(BIN_DIR)/cpm0.rel $(BIN_DIR)/cpm_trailer.rel \
 	   $(BIN_DIR)/cpmbdos.rel \
 	   $(BIN_DIR)/ansi_term.rel \
 	   $(BIN_DIR)/pcw_term.rel \
@@ -37,3 +37,6 @@ $(BIN_DIR)/hw_common.rel: $(HWLIB_SRC_DIR)/common/hw_common.c
 # Build CP/M-80 Command File Structure files
 $(BIN_DIR)/cpm0.rel: $(CPM_SRC_DIR)/cpm0.s
 	$(CAS) $(CAS_FLAGS) $(BIN_DIR)/cpm0.rel $(CPM_SRC_DIR)/cpm0.s
+
+$(BIN_DIR)/cpm_trailer.rel: $(CPM_SRC_DIR)/cpm_trailer.s
+	$(CAS) $(CAS_FLAGS) $(BIN_DIR)/cpm_trailer.rel $(CPM_SRC_DIR)/cpm_trailer.s

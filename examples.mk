@@ -23,4 +23,5 @@ $(BIN_DIR)/generic.arf:
 	$(QUIET)$(ECHO) $(BIN_DIR)/hw_common.rel >> $(BIN_DIR)/generic.arf
 	$(QUIET)$(ECHO) $(BIN_DIR)/hw_modprn02.rel >> $(BIN_DIR)/generic.arf
 	$(QUIET)$(ECHO) $(BIN_DIR)/$(REPLACE_TAG).rel >> $(BIN_DIR)/generic.arf
+	$(QUIET)$(ECHO) $(BIN_DIR)/cpm_trailer.rel >> $(BIN_DIR)/generic.arf
 	$(QUIET)$(ECHO) -e >> $(BIN_DIR)/generic.arf
