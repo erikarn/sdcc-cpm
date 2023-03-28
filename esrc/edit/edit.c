@@ -38,6 +38,52 @@ typedef enum {
 #define	EDITOR_MAX_LINE_LEN		80
 #define	EDITOR_MAX_LINE_COUNT		50
 
+/* ******************************** */
+
+
+#ifdef	CPM
+
+extern uint16_t free_tpa_end;
+extern uint16_t free_tpa_start;
+
+#if 0
+#include "cprintf.h"
+void
+get_tpa_range(void)
+{
+	uint16_t bdos_start;
+
+	/* End is the start of BDOS */
+	memcpy(&bdos_start, (void *) 0x0006, sizeof(uint16_t));
+
+	cprintf("%s: (addr %x) end=%x\n", __func__,
+	    free_tpa_start, free_tpa_end);
+	cprintf("%s: BDOS start: %x\n", __func__, bdos_start);
+}
+#endif
+
+/* XXX because this isn't a function in the SDCC lib, sigh */
+struct header;
+struct header {
+	struct header *next, *next_free;
+};
+
+extern struct header * __sdcc_heap_free;
+
+static void
+add_tpa_to_sdcc_heap(void)
+{
+	struct header *s;
+
+	s = (void *) free_tpa_start;
+	s->next = (void *) free_tpa_end;
+	s->next_free = (void *) __sdcc_heap_free;
+	__sdcc_heap_free = s;
+}
+
+#endif
+
+
 struct text_line;
 
 static struct cur_editor_state {
@@ -696,6 +742,11 @@ int main() {
 
 	text_array_init();
 	editor_init();
+
+#ifdef	CPM
+	//get_tpa_range();
+	add_tpa_to_sdcc_heap();
+#endif
 
 	repaint_screen();
 
