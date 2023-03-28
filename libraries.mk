@@ -35,7 +35,5 @@ $(BIN_DIR)/hw_common.rel: $(HWLIB_SRC_DIR)/common/hw_common.c
 	$(CCC) $(CCC_FLAGS) -o $(BIN_DIR) $(HWLIB_SRC_DIR)/common/hw_common.c
 
 # Build CP/M-80 Command File Structure files
-$(BIN_DIR)/cpm0.rel: $(CPM_SRC_DIR)/cpm0.rel
-	$(CAS) $(CAS_FLAGS) $(BIN_DIR)/cpm0.o $(CPM_SRC_DIR)/cpm0.s
-	$(QUIET)$(COPY) $(CPM_SRC_DIR)/cpm0.rel $(BIN_DIR)
-	$(QUIET)$(COPY) $(CPM_SRC_DIR)/cpm0.lst $(BIN_DIR)
+$(BIN_DIR)/cpm0.rel: $(CPM_SRC_DIR)/cpm0.s
+	$(CAS) $(CAS_FLAGS) $(BIN_DIR)/cpm0.rel $(CPM_SRC_DIR)/cpm0.s
