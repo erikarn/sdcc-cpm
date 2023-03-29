@@ -549,18 +549,67 @@ static void
 handle_keypress_cursor_left(void)
 {
 	if (cur_state.cur_line == NULL) {
-		TERM_pcw_beep();
-		return;
+		goto error;
 	}
+	if (cur_state.cur_x == 0) {
+		/* Potentially shift the screen left and repaint */
+		if (cur_state.left_screen_col > 0) {
+			/* XXX Move it one at a time to be lazy */
+			cur_state.left_screen_col--;
+			repaint_screen();
+			goto done;
+		}
+		/* Can't move any further left */
+		goto error;
+	}
+
+	cur_state.cur_x--;
+	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
+done:
+	return;
+error:
+	TERM_pcw_beep();
+	return;
 }
 
 static void
 handle_keypress_cursor_right(void)
 {
-	if (cur_state.cur_line == NULL) {
-		TERM_pcw_beep();
-		return;
+	if (cur_state.cur_line == NULL || cur_state.cur_line->len == 0) {
+		goto error;
 	}
+
+	/*
+	 * Only allow going to the end of the line, not a character over it!
+	 */
+	if ((cur_state.left_screen_col + cur_state.cur_x) >= (cur_state.cur_line->len - 1)) {
+		goto error;
+	}
+
+	/*
+	 * Check if we need to move the screen right.
+	 * We only do this if we have characters left on the line.
+	 */
+	if (cur_state.cur_x >= cur_state.port_w) {
+		if (cur_state.cur_x + cur_state.left_screen_col < cur_state.cur_line->len) {
+			/* XXX Move it one at a time to be lazy */
+			cur_state.left_screen_col ++;
+			repaint_screen();
+			goto done;
+		} else {
+			/* We're at the end of the line */
+			goto error;
+		}
+	}
+
+	cur_state.cur_x++;
+	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
+done:
+	return;
+
+error:
+	TERM_pcw_beep();
+	return;
 }
 
 static void
