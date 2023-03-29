@@ -87,15 +87,13 @@ add_tpa_to_sdcc_heap(void)
 struct text_line;
 
 static struct cur_editor_state {
+
 	/* Current cursor x/y position */
 	uint8_t cur_x;
 	uint8_t cur_y;
 
 	/* Top screen line */
 	uint16_t top_screen_line;
-
-	/* Start column for rendering */
-	uint8_t left_screen_col;
 
 	/*
 	 * Viewport width/height - eg needing to know
@@ -124,7 +122,6 @@ editor_init(void)
 	cur_state.cur_x = 0;
 	cur_state.cur_y = 0;
 	cur_state.top_screen_line = 0;
-	cur_state.left_screen_col = 0;
 	cur_state.port_w = 90;
 	cur_state.port_h = 31;
 
@@ -139,11 +136,19 @@ get_cur_line_number(void)
 	return (cur_state.top_screen_line + cur_state.cur_y);
 }
 
+/* minus 1 since we have a status line */
 static inline uint8_t
-get_cur_col_number(void)
+get_editor_port_height(void)
 {
-	return (cur_state.left_screen_col + cur_state.cur_x);
+	return cur_state.port_h - 1;
 }
+
+static inline uint8_t
+get_editor_port_width(void)
+{
+	return cur_state.port_w;
+}
+
 
 
 /* ***************************************************************** */
@@ -338,14 +343,12 @@ text_line_fetch(uint16_t line, uint8_t size)
 
 /*
  * Repaint the given line.
- *
- * Take left_screen_col into account.
  */
 void
 repaint_line(uint8_t y)
 {
 	struct text_line *l;
-	uint8_t sx, lx;
+	uint8_t lx;
 
 	TERM_pcw_move_cursor(0, y);
 
@@ -355,21 +358,27 @@ repaint_line(uint8_t y)
 		return;
 	}
 
+	/* Print a blank line if we're ... a blank line */
+	if (l->len == 0) {
+		TERM_pcw_write_char(' ');
+		return;
+	}
+
 	/* Iterate over the line itself, print characters */
-	sx = cur_state.left_screen_col;
-	for (lx = 0; lx < cur_state.port_w; lx++, sx++) {
-		if (sx >= l->len) {
+	for (lx = 0; lx < cur_state.port_w; lx++) {
+		if (lx >= l->len) {
 			break;
 		}
 		/* XXX TODO: hella stupid for now, will make it less stupid later */
-		TERM_pcw_write_char(l->buf[sx]);
+		TERM_pcw_write_char(l->buf[lx]);
 	}
 }
 
 static void
 set_viewport_normal(void)
 {
-	TERM_pcw_set_viewport(0, 0, cur_state.port_h - 1, cur_state.port_w);
+	TERM_pcw_set_viewport(0, 0, get_editor_port_height(),
+	     get_editor_port_width());
 	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
 }
 
@@ -391,7 +400,7 @@ repaint_screen(void)
 
 	set_viewport_normal();
 
-	for (y = 0; y < cur_state.port_h; y++) {
+	for (y = 0; y < get_editor_port_height(); y++) {
 		repaint_line(y);
 	}
 	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
@@ -434,6 +443,7 @@ handle_insert_cmd(void)
 	 * want a super efficiently fast editor.
 	 */
 	repaint_line(cur_state.cur_y);
+	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
 
 	/* And now we're in "edit" mode */
 	/* XXX make it an inline func for debugging */
@@ -497,6 +507,16 @@ exit:
 }
 
 static void
+clamp_cursor_x_at_line(void)
+{
+	if (cur_state.cur_line->len == 0) {
+		cur_state.cur_x = 0;
+	} else if (cur_state.cur_x > (cur_state.cur_line->len - 1)) {
+		cur_state.cur_x = cur_state.cur_line->len - 1;
+	}
+}
+
+static void
 handle_keypress_cursor_up(void)
 {
 	struct text_line *l;
@@ -527,19 +547,23 @@ handle_keypress_cursor_up(void)
 	/* Can just move the cursor */
 	if (cur_state.cur_y > 0) {
 		cur_state.cur_y--;
-		TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
 		goto done;
 	}
 
 	/* Need to scroll up one */
 	TERM_pcw_move_cursor(0, 0);
 	TERM_pcw_cursor_move_up_scroll();
+	cur_state.top_screen_line--;
+	repaint_line(0);
 
 done:
-
-	/* XXX TODO: clamp */
-
+	/* Update line cache */
 	cur_state.cur_line = l;
+
+	/* Clamp cursor x position */
+	clamp_cursor_x_at_line();
+
+	/* Update cursor */
 	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
 	return;
 
@@ -562,15 +586,43 @@ handle_keypress_cursor_down(void)
 	l = text_line_lookup(ln + 1);
 	if (l == NULL) {
 		TERM_pcw_beep();
-		return;
+		goto error;
 	}
 
 	/*
 	 * Ok, a line exists.  Move the cursor down one,
 	 * scroll the screen if possible, update the
-	 * current text line.
+	 * current text line.  Note that we clamp the
+	 * cursor to the end of the new line.
 	 */
+
+	/* Can just move the cursor */
+	if (cur_state.cur_y < get_editor_port_height()) {
+		cur_state.cur_y++;
+		goto done;
+	}
+
+	/* Need to scroll down one */
+	TERM_pcw_move_cursor(0, get_editor_port_height() - 1);
 	/* XXX TODO */
+	cpm_putchar('\n');
+	cur_state.top_screen_line++;
+	repaint_line(cur_state.cur_y);
+
+done:
+	/* Update line cache */
+	cur_state.cur_line = l;
+
+	/* Clamp cursor x position */
+	clamp_cursor_x_at_line();
+
+	/* Update cursor */
+	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
+	return;
+
+error:
+	TERM_pcw_beep();
+	return;
 }
 
 static void
@@ -580,13 +632,6 @@ handle_keypress_cursor_left(void)
 		goto error;
 	}
 	if (cur_state.cur_x == 0) {
-		/* Potentially shift the screen left and repaint */
-		if (cur_state.left_screen_col > 0) {
-			/* XXX Move it one at a time to be lazy */
-			cur_state.left_screen_col--;
-			repaint_screen();
-			goto done;
-		}
 		/* Can't move any further left */
 		goto error;
 	}
@@ -610,7 +655,7 @@ handle_keypress_cursor_right(void)
 	/*
 	 * Only allow going to the end of the line, not a character over it!
 	 */
-	if ((cur_state.left_screen_col + cur_state.cur_x) >= (cur_state.cur_line->len - 1)) {
+	if (cur_state.cur_x >= (cur_state.cur_line->len - 1)) {
 		goto error;
 	}
 
@@ -619,15 +664,8 @@ handle_keypress_cursor_right(void)
 	 * We only do this if we have characters left on the line.
 	 */
 	if (cur_state.cur_x >= cur_state.port_w) {
-		if (cur_state.cur_x + cur_state.left_screen_col < cur_state.cur_line->len) {
-			/* XXX Move it one at a time to be lazy */
-			cur_state.left_screen_col ++;
-			repaint_screen();
-			goto done;
-		} else {
-			/* We're at the end of the line */
-			goto error;
-		}
+		/* We're at the end of the line; error out */
+		goto error;
 	}
 
 	cur_state.cur_x++;
@@ -681,14 +719,9 @@ handle_keypress_edit_newline(char c)
 
 	/* New line - start by going to the beginning of line */
 	cur_state.cur_x = 0;
-	cur_state.left_screen_col = 0;
 
 	/* Are we at the end of our size? */
-	/*
-	 * XXX TODO: again, I should likely store this and calculate
-	 * the cursor position..
-	 */
-	cur_editor_line = cur_state.cur_y + cur_state.top_screen_line;
+	cur_editor_line = get_cur_line_number();
 	if (cur_editor_line >= EDITOR_MAX_LINE_COUNT) {
 		TERM_pcw_beep();
 		return;
@@ -709,17 +742,19 @@ handle_keypress_edit_newline(char c)
 	 * because we're at the bottom of the screen.
 	 */
 	cur_state.cur_y++;
-	if (cur_state.cur_y > cur_state.port_h) {
+	if (cur_state.cur_y >= get_editor_port_height()) {
 		cur_state.cur_y--;
 		cur_state.top_screen_line++;
-		/* XXX repaint for now, will scroll later */
-		repaint_screen();
+		TERM_pcw_move_cursor(0, get_editor_port_height() - 1);
+		/* XXX */
+		cpm_putchar('\n');
+		/* It'll get repainted if needed down */
 	}
 
 	/* Update cached line */
 	cur_state.cur_line = l;
 
-	/* Update cursor, display new now blanked line */
+	/* Update cursor, display new now blanked line or line we're overwriting */
 	repaint_line(cur_state.cur_y);
 	TERM_pcw_move_cursor(0, cur_state.cur_y);
 }
@@ -727,7 +762,6 @@ handle_keypress_edit_newline(char c)
 static void
 handle_keypress_edit(char c)
 {
-	uint8_t cur_x_pos;
 
 	if (c == KEY_ESC) {
 		/* Drop out of editor mode */
@@ -762,21 +796,11 @@ handle_keypress_edit(char c)
 	 * If we don't then we're going to need to reallocate the
 	 * line or check if we've hit the maximum line length.
 	 */
-
-	/*
-	 * XXX I definitely don't like this; it could wrap in really
-	 * terrible ways if I'm not careful!
-	 *
-	 * XXX I likely should change it to have cur_x be the
-	 * actual line offset, and I subtract left_screen_col to
-	 * get the /actual/ cursor start position.
-	 */
-	cur_x_pos = cur_state.cur_x + cur_state.left_screen_col;
-	if (cur_x_pos >= EDITOR_MAX_LINE_LEN) {
+	if (cur_state.cur_x >= EDITOR_MAX_LINE_LEN) {
 		TERM_pcw_beep();
 		return;
 	}
-	if (cur_x_pos >= cur_state.cur_line->size) {
+	if (cur_state.cur_x >= cur_state.cur_line->size) {
 		/*
 		 * For now just go for a full line length; optimise smaller
 		 * increments later.
@@ -788,26 +812,15 @@ handle_keypress_edit(char c)
 	}
 
 	/* It's big enough now, we can edit appropriately */
-	cur_state.cur_line->buf[cur_x_pos] = c;
+	cur_state.cur_line->buf[cur_state.cur_x] = c;
 	TERM_pcw_write_char(c);
 
-	/* Advance character */
-	cur_x_pos++;
-
-	/* Extend the line too if we need to */
-	if (cur_x_pos > cur_state.cur_line->len) {
-		cur_state.cur_line->len = cur_x_pos;
-	}
-
-	/* Advance cursor */
+	/* Advance character / cursor */
 	cur_state.cur_x++;
 
-	/* If we're at the end of the viewport then we may need to shift
-	 * the viewport and repaint! */
-	if (cur_state.cur_x >= cur_state.port_w) {
-		cur_state.cur_x -= 4;
-		cur_state.left_screen_col += 4;
-		repaint_screen();
+	/* Extend the line too if we need to */
+	if (cur_state.cur_x > cur_state.cur_line->len) {
+		cur_state.cur_line->len = cur_state.cur_x;
 	}
 }
 
