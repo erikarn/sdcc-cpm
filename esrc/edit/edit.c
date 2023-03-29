@@ -139,6 +139,13 @@ get_cur_line_number(void)
 	return (cur_state.top_screen_line + cur_state.cur_y);
 }
 
+static inline uint8_t
+get_cur_col_number(void)
+{
+	return (cur_state.left_screen_col + cur_state.cur_x);
+}
+
+
 /* ***************************************************************** */
 
 /*
@@ -498,8 +505,7 @@ handle_keypress_cursor_up(void)
 	/* See if we can even go up */
 	ln = get_cur_line_number();
 	if (ln == 0) {
-		TERM_pcw_beep();
-		return;
+		goto error;
 	}
 
 	/*
@@ -508,16 +514,38 @@ handle_keypress_cursor_up(void)
 	 */
 	l = text_line_lookup(ln - 1);
 	if (l == NULL) {
-		TERM_pcw_beep();
-		return;
+		goto error;
 	}
 
 	/*
 	 * Ok, a line exists.  Move the cursor up one,
 	 * scroll the screen if possible, update the
-	 * current text line.
+	 * current text line.  Note that we clamp the
+	 * cursor to the end of the new line.
 	 */
-	/* XXX TODO */
+
+	/* Can just move the cursor */
+	if (cur_state.cur_y > 0) {
+		cur_state.cur_y--;
+		TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
+		goto done;
+	}
+
+	/* Need to scroll up one */
+	TERM_pcw_move_cursor(0, 0);
+	TERM_pcw_cursor_move_up_scroll();
+
+done:
+
+	/* XXX TODO: clamp */
+
+	cur_state.cur_line = l;
+	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
+	return;
+
+error:
+	TERM_pcw_beep();
+	return;
 }
 
 static void
