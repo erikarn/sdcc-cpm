@@ -351,6 +351,8 @@ repaint_line(uint8_t y)
 	uint8_t lx;
 
 	TERM_pcw_move_cursor(0, y);
+	TERM_pcw_erase_line_end();
+	TERM_pcw_move_cursor(0, y);
 
 	l = text_line_lookup(cur_state.top_screen_line + y);
 	if (l == NULL) {
@@ -759,6 +761,39 @@ handle_keypress_edit_newline(char c)
 	TERM_pcw_move_cursor(0, cur_state.cur_y);
 }
 
+/* Handle backspace-delete */
+static void
+handle_keypress_edit_del(char c)
+{
+	(void) c;
+
+	if (cur_state.cur_line == NULL) {
+		goto error;
+	}
+
+	/*
+	 * Get the current position on the current line,
+	 * we're going to delete a character on said line.
+	 */
+	if (cur_state.cur_x == 0 || cur_state.cur_line->len == 0) {
+		goto error;
+	}
+
+	memmove(&cur_state.cur_line->buf[cur_state.cur_x - 1],
+	    &cur_state.cur_line->buf[cur_state.cur_x],
+	    (cur_state.cur_line->len - cur_state.cur_x));
+
+	cur_state.cur_x--;
+	cur_state.cur_line->len--;
+	repaint_line(cur_state.cur_y);
+	TERM_pcw_move_cursor(cur_state.cur_x, cur_state.cur_y);
+
+	return;
+error:
+	TERM_pcw_beep();
+	return;
+}
+
 static void
 handle_keypress_edit(char c)
 {
@@ -850,6 +885,10 @@ int main() {
 		case EDITOR_MODE_EDIT:
 			if (ch == KEY_CR | ch == KEY_LF) {
 				handle_keypress_edit_newline(ch);
+				break;
+			}
+			if (ch == KEY_DEL) {
+				handle_keypress_edit_del(ch);
 				break;
 			}
 			handle_keypress_edit(ch);
